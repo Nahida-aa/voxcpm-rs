@@ -53,6 +53,11 @@ fn main() {
     let aaaa1 = a.clone() * a.clone() * a.clone() * a.clone();
     eprintln!("  10*10*10*10  = {:?}  (expect 10000)", &rd(aaaa1)[..2]);
 
+    eprintln!("\nbf16 silu at large input:");
+    let big = Tensor::<Gpu, 1>::from_data(bf(23.75, n), &device);
+    let s23 = big.clone() * sigmoid(big.clone());
+    eprintln!("  silu(23.75) = {:?}  (expect ~23.75)", &rd(s23)[..2]);
+
     eprintln!("\nDifferent shapes: 1024 elements:");
     let big_a: Tensor<Gpu, 1> = Tensor::from_data(bf(10.0, 1024), &device);
     let big_b: Tensor<Gpu, 1> = Tensor::from_data(bf(2.0, 1024), &device);
