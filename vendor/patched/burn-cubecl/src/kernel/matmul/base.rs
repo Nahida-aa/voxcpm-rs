@@ -17,6 +17,22 @@ pub enum MatmulStrategy {
     Autotune,
     /// Cube implementation of matmul.
     Cube,
+    /// Naive (scalar) implementation. Works for every float type the backend
+    /// can store, including bf16 on drivers without bf16 matmul (gfx1103),
+    /// where `Cube` panics instead of falling back.
+    Naive,
+}
+
+/// Backend-level switch so vox-lab's CLI can force `Naive` without touching
+/// every call site.
+static FORCE_NAIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_force_naive_matmul(on: bool) {
+    FORCE_NAIVE.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn force_naive_matmul() -> bool {
+    FORCE_NAIVE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Default for MatmulStrategy {
@@ -38,7 +54,17 @@ pub fn matmul<R: CubeRuntime>(
     strategy: MatmulStrategy,
     out_dtype: DType,
 ) -> Result<CubeTensor<R>, MatmulSetupError> {
+    if force_naive_matmul() && !matches!(strategy, MatmulStrategy::Naive) {
+        let out = out.unwrap_or_else(|| init_matmul_output(&lhs, &rhs, out_dtype));
+        launch_matmul(&Strategy::Naive, lhs, rhs, out.clone())?;
+        return Ok(out);
+    }
     match strategy {
+        MatmulStrategy::Naive => {
+            let out = out.unwrap_or_else(|| init_matmul_output(&lhs, &rhs, out_dtype));
+            launch_matmul(&Strategy::Naive, lhs, rhs, out.clone())?;
+            Ok(out)
+        }
         MatmulStrategy::Cube => {
             let out = out.unwrap_or_else(|| init_matmul_output(&lhs, &rhs, out_dtype));
             launch_matmul(&Default::default(), lhs, rhs, out.clone())?;

@@ -12,7 +12,7 @@ use cubek::{
 };
 
 /// Perform a 2D convolution using the implicit GEMM (im2col) algorithm, using cubecl tiling matmul
-/// components. Uses [`CmmaLargeMAlgorithm`] for the stage size
+/// components. Uses [`CmmaLargeMAlgorithm`] for the step size
 ///
 /// * `input` - The input feature map
 /// * `weight` - The weights (filter) applied to each kernel
@@ -65,7 +65,7 @@ pub fn conv_gemm_simple_async<R: CubeRuntime, const N: usize>(
 }
 
 /// Perform a 2D convolution using the implicit GEMM (im2col) algorithm, using cubecl tiling matmul
-/// components. Uses [`CmmaLargeMAlgorithm`] for the stage size
+/// components. Uses [`CmmaLargeMAlgorithm`] for the step size
 ///
 /// * `input` - The input feature map
 /// * `weight` - The weights (filter) applied to each kernel

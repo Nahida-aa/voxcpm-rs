@@ -34,10 +34,12 @@ default = ["wgpu"]
 wgpu = ["voxcpm-rs/wgpu"]
 cpu = ["voxcpm-rs/cpu", "burn/ndarray"]
 cpu-blas = ["voxcpm-rs/cpu-blas", "burn/ndarray", "burn/openblas"]
-vulkan = ["voxcpm-rs/vulkan"]
+vulkan = ["voxcpm-rs/vulkan", "dep:burn-cubecl"]
 
 [dependencies]
 voxcpm-rs = { path = ".." }
+# 仅用于 vulkan 后端的 matmul 策略开关（gfx1103 无 bf16 matmul）
+burn-cubecl = { path = "../vendor/patched/burn-cubecl", optional = true }
 burn = { version = "0.20.1", default-features = false, features = ["std"] }
 clap = { version = "4", features = ["derive", "env"] }
 hound = "3"

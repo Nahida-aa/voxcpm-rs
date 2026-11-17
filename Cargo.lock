@@ -423,6 +423,7 @@ dependencies = [
  "log",
  "serde",
  "text_placeholder",
+ "tracing",
 ]
 
 [[package]]
@@ -438,6 +439,7 @@ dependencies = [
  "cubecl",
  "cubek",
  "derive-new",
+ "half",
  "serde",
 ]
 
@@ -837,6 +839,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "burn",
+ "burn-cubecl",
  "clap",
  "env_logger",
  "half",
