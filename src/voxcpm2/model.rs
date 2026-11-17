@@ -487,6 +487,37 @@ impl<B: Backend> VoxCpm2Model<B> {
             let _ = t.slice([0..1, 0..1]).into_data();
         };
 
+        // Optional per-step dump for cross-backend numerical comparison.
+        // `VOXCPM_DUMP_AR=<dir>` writes, for each autoregressive step, the
+        // LM hidden states that feed the DiT (inputs) and the patch it
+        // predicts (output), as raw f32 LE. Comparing those against the
+        // PyTorch reference isolates LM drift from sampler drift.
+        let dump_dir = std::env::var("VOXCPM_DUMP_AR").ok().map(std::path::PathBuf::from);
+        if let Some(dir) = &dump_dir {
+            std::fs::create_dir_all(dir)?;
+            let write = |name: &str, t: Tensor<B, 2>| -> crate::Result<()> {
+                let dims = t.dims().to_vec();
+                let values = t
+                    .into_data()
+                    .convert::<f32>()
+                    .into_vec::<f32>()
+                    .map_err(|e| crate::Error::AudioDecode(format!("dump readback: {e}")))?;
+                let mut bytes = Vec::with_capacity(values.len() * 4);
+                for v in &values {
+                    bytes.extend_from_slice(&v.to_le_bytes());
+                }
+                std::fs::write(dir.join(format!("{name}.f32")), bytes)?;
+                std::fs::write(
+                    dir.join(format!("{name}.shape")),
+                    dims.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","),
+                )?;
+                Ok(())
+            };
+            // step -1 = prefill state (inputs to the first DiT call)
+            write("step_m1_lm_hidden", state.lm_hidden.clone())?;
+            write("step_m1_residual_hidden", state.residual_hidden.clone())?;
+        }
+
         for i in 0..max_len {
             // Cancellation check (cheap atomic load via callback). Bails
             // before launching the next DiT sample so latency = at most
@@ -525,7 +556,38 @@ impl<B: Backend> VoxCpm2Model<B> {
                 break;
             }
 
+            let pred_for_dump = pred_feat.clone();
             self.lm_step(&mut state, pred_feat);
+
+            if let Some(dir) = &dump_dir {
+                // Predicted patch (DiT output) and the post-lm_step hidden
+                // states (inputs to the next DiT call).
+                // pred_feat is [B, 1, P, D]; squeeze_dim only removes axes of
+                // size 1, and P (4) is > 1, so reshape to [B, P*D] instead.
+                let [b, _one, p, d] = pred_for_dump.dims();
+                let pred: Tensor<B, 2> = pred_for_dump.reshape([b, p * d]);
+                let dump = |name: String, t: Tensor<B, 2>| -> crate::Result<()> {
+                    let dims = t.dims().to_vec();
+                    let values = t
+                        .into_data()
+                        .convert::<f32>()
+                        .into_vec::<f32>()
+                        .map_err(|e| crate::Error::AudioDecode(format!("dump readback: {e}")))?;
+                    let mut bytes = Vec::with_capacity(values.len() * 4);
+                    for v in &values {
+                        bytes.extend_from_slice(&v.to_le_bytes());
+                    }
+                    std::fs::write(dir.join(format!("{name}.f32")), bytes)?;
+                    std::fs::write(
+                        dir.join(format!("{name}.shape")),
+                        dims.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","),
+                    )?;
+                    Ok(())
+                };
+                dump(format!("step_{i}_pred_feat"), pred)?;
+                dump(format!("step_{i}_lm_hidden"), state.lm_hidden.clone())?;
+                dump(format!("step_{i}_residual_hidden"), state.residual_hidden.clone())?;
+            }
 
             if let (Some(t0), Some(t1)) = (t0, t1) {
                 sync_barrier(state.residual_hidden.clone());
