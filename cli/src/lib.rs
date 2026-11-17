@@ -42,6 +42,11 @@ pub struct Cli {
     /// Reference audio for voice cloning (zero-shot). Pass a WAV/FLAC/MP3 path.
     #[arg(long, default_value = "")]
     pub ref_audio: String,
+
+    /// Fix the sampling seed (CFM initial noise + AudioVAE noise block) so the
+    /// same text reproduces the same waveform. Omit for fresh noise per run.
+    #[arg(long)]
+    pub seed: Option<u64>,
 }
 
 /// 主流程。stdout 约定（基准脚本依赖，勿改）：`Benchmark-Load-Time` / `Benchmark-Warmup-Time` / `Benchmark-Gen-Time`。
@@ -99,6 +104,9 @@ pub fn run<B: Backend>(cli: Cli, device: B::Device) -> Result<()> {
             .max_len(cli.max_len);
         if let Some(n) = cli.parallel_segments {
             b = b.parallel_segments(n);
+        }
+        if let Some(seed) = cli.seed {
+            b = b.seed(seed);
         }
         if !cli.ref_audio.is_empty() {
             b = b.prompt(voxcpm_rs::Prompt::Reference {

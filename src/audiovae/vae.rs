@@ -54,8 +54,14 @@ impl<B: Backend> AudioVae<B> {
 
     /// Decode latent `[B, C, T']` → waveform `[B, 1, T]`.
     pub fn decode(&self, z: Tensor<B, 3>) -> Tensor<B, 3> {
+        self.decode_seeded(z, None)
+    }
+
+    /// Deterministic decode: `seed` fixes the noise blocks (see
+    /// [`GenerateOptions::seed`][crate::GenerateOptions::seed]).
+    pub fn decode_seeded(&self, z: Tensor<B, 3>, seed: Option<u64>) -> Tensor<B, 3> {
         let target_sr = self.config.0.out_sample_rate as i32;
-        self.decoder.forward(z, target_sr)
+        self.decoder.forward_seeded(z, target_sr, seed)
     }
 
     pub fn sample_rate(&self) -> usize {

@@ -294,6 +294,18 @@ impl<B: Backend> VoxCpm2Model<B> {
         inference_timesteps: usize,
         cfg_value: f64,
     ) -> DitStep<B> {
+        self.dit_step_seeded(state, inference_timesteps, cfg_value, None)
+    }
+
+    /// [`Self::dit_step`] with an explicit sampling seed (see
+    /// [`GenerateOptions::seed`][crate::GenerateOptions::seed]).
+    pub fn dit_step_seeded(
+        &self,
+        state: &mut InferenceState<B>,
+        inference_timesteps: usize,
+        cfg_value: f64,
+        seed: Option<u64>,
+    ) -> DitStep<B> {
         let patch_size = self.patch_size();
 
         // DiT inputs: concat(lm_to_dit(lm), res_to_dit(res))
@@ -311,6 +323,7 @@ impl<B: Backend> VoxCpm2Model<B> {
             cfg_value,
             1.0,
             true,
+            seed,
         );
         let pred_feat = pred.swap_dims(1, 2);
         let pred4: Tensor<B, 4> = pred_feat.clone().unsqueeze_dim(1);
@@ -401,10 +414,11 @@ impl<B: Backend> VoxCpm2Model<B> {
         inference_timesteps: usize,
         cfg_value: f64,
         cancel: Option<&dyn Fn() -> bool>,
+        seed: Option<u64>,
     ) -> crate::Result<(Tensor<B, 3>, Vec<usize>)> {
         self.inference_with_lengths(
             text_token, text_mask, feat, feat_mask,
-            min_len, max_len, inference_timesteps, cfg_value, cancel, None,
+            min_len, max_len, inference_timesteps, cfg_value, cancel, None, seed,
         )
     }
 
@@ -423,6 +437,7 @@ impl<B: Backend> VoxCpm2Model<B> {
         cfg_value: f64,
         cancel: Option<&dyn Fn() -> bool>,
         prefill_lengths: Option<Vec<usize>>,
+        seed: Option<u64>,
     ) -> crate::Result<(Tensor<B, 3>, Vec<usize>)> {
         let batch = text_token.dims()[0];
         let mut state = self.prefill_with_lengths(
@@ -454,7 +469,7 @@ impl<B: Backend> VoxCpm2Model<B> {
 
             let t0 = profile.then(std::time::Instant::now);
             let DitStep { pred_feat, stops } =
-                self.dit_step(&mut state, inference_timesteps, cfg_value);
+                self.dit_step_seeded(&mut state, inference_timesteps, cfg_value, seed);
             pred_feats.push(pred_feat.clone());
             if profile {
                 sync_barrier(pred_feat.clone().squeeze_dim::<3>(1).narrow(2, 0, 1).squeeze_dim(2));

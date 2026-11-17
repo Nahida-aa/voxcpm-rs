@@ -5,6 +5,7 @@ use burn::nn::conv::{Conv1d, Conv1dConfig, ConvTranspose1d, ConvTranspose1dConfi
 use burn::nn::{Embedding, EmbeddingConfig, PaddingConfig1d};
 use burn::prelude::*;
 use burn::tensor::{Int, TensorData};
+use rand::{Rng, SeedableRng};
 
 // ---------------------------------------------------------------------------
 // Causal Conv1d: left-pads by `padding*2 - output_padding` before a regular conv.
@@ -173,12 +174,33 @@ impl<B: Backend> NoiseBlock<B> {
     }
 
     pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 3> {
+        self.forward_seeded(x, None)
+    }
+
+    /// Deterministic variant: the noise comes from Burn's seeded RNG when
+    /// `seed` is `Some`, so the same seed reproduces the same waveform.
+    pub fn forward_seeded(&self, x: Tensor<B, 3>, seed: Option<u64>) -> Tensor<B, 3> {
         let [b, _c, t] = x.dims();
-        let noise = Tensor::<B, 3>::random(
-            [b, 1, t],
-            burn::tensor::Distribution::Normal(0.0, 1.0),
-            &x.device(),
-        );
+        let noise = match seed {
+            Some(seed) => {
+                let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                let values: Vec<f32> = (0..b * t)
+                    .map(|_| {
+                        let u: f32 = rng.r#gen::<f32>();
+                        // Map U(0,1] -> N(0,1) via Box–Muller, matching Distribution::Normal.
+                        let u2: f32 = rng.r#gen::<f32>();
+                        (-2.0 * u.max(f32::MIN_POSITIVE).ln()).sqrt()
+                            * (std::f32::consts::TAU * u2).cos()
+                    })
+                    .collect();
+                Tensor::<B, 3>::from_data(TensorData::new(values, [b, 1, t]), &x.device())
+            }
+            None => Tensor::<B, 3>::random(
+                [b, 1, t],
+                burn::tensor::Distribution::Normal(0.0, 1.0),
+                &x.device(),
+            ),
+        };
         let h = self.linear.forward(x.clone());
         x + noise * h
     }

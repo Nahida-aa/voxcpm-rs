@@ -191,6 +191,11 @@ pub struct GenerateOptions {
     /// aggressive throughput on a strong GPU, or `Some(8)` to push as far
     /// as the launch-bound regime allows.
     pub parallel_segments: Option<usize>,
+    /// Deterministic sampling. `Some(seed)` fixes both sources of randomness
+    /// (the CFM initial noise and the AudioVAE noise block), so the same seed
+    /// and text produce a bit-identical waveform. `None` (default) keeps the
+    /// upstream behaviour of fresh noise per call.
+    pub seed: Option<u64>,
 }
 
 impl Default for GenerateOptions {
@@ -204,6 +209,7 @@ impl Default for GenerateOptions {
             cancel: None,
             chunk_patches: 5,
             parallel_segments: None,
+            seed: None,
         }
     }
 }
@@ -272,6 +278,11 @@ impl GenerateOptionsBuilder {
     /// See [`GenerateOptions::parallel_segments`].
     pub fn parallel_segments(mut self, n: usize) -> Self {
         self.inner.parallel_segments = Some(n);
+        self
+    }
+    /// Set [`GenerateOptions::seed`] for reproducible sampling.
+    pub fn seed(mut self, seed: u64) -> Self {
+        self.inner.seed = Some(seed);
         self
     }
     /// Finalize into a [`GenerateOptions`].
@@ -456,9 +467,10 @@ impl<B: Backend> VoxCPM<B> {
             opts.inference_timesteps,
             opts.cfg_value as f64,
             cancel_fn.as_deref(),
+            opts.seed,
         )?;
 
-        Ok(decode_latent_to_samples(&self.model.audio_vae, latent)?)
+        Ok(decode_latent_to_samples_seeded(&self.model.audio_vae, latent, opts.seed)?)
     }
 
     /// Streaming variant of [`Self::generate`]: returns an iterator that
@@ -662,8 +674,9 @@ impl<B: Backend> VoxCPM<B> {
             opts.inference_timesteps,
             opts.cfg_value as f64,
             cancel_fn,
+            opts.seed,
         )?;
-        decode_latent_to_samples(&self.model.audio_vae, latent)
+        decode_latent_to_samples_seeded(&self.model.audio_vae, latent, opts.seed)
     }
 
     /// Build a right-padded batched inputs tensor for `texts.len()` segments
@@ -881,6 +894,7 @@ impl<B: Backend> VoxCPM<B> {
             opts.cfg_value as f64,
             cancel_fn.as_deref(),
             Some(lens),
+            opts.seed,
         )?;
 
         // 4) Decode each row independently using its own stop_step.
@@ -957,6 +971,7 @@ impl<B: Backend> VoxCPM<B> {
                 opts.cfg_value as f64,
                 cancel_fn.as_deref(),
                 Some(lens),
+                opts.seed,
             )?;
             let dims = latent.dims();
             let p = self.model.patch_size();
@@ -1102,7 +1117,15 @@ fn decode_latent_to_samples<B: Backend>(
     audio_vae: &crate::audiovae::AudioVae<B>,
     latent: Tensor<B, 3>,
 ) -> crate::Result<Vec<f32>> {
-    let wav = audio_vae.decode(latent);
+    decode_latent_to_samples_seeded(audio_vae, latent, None)
+}
+
+fn decode_latent_to_samples_seeded<B: Backend>(
+    audio_vae: &crate::audiovae::AudioVae<B>,
+    latent: Tensor<B, 3>,
+    seed: Option<u64>,
+) -> crate::Result<Vec<f32>> {
+    let wav = audio_vae.decode_seeded(latent, seed);
     let wav = wav.squeeze_dim::<2>(1); // [B, T_out]
     let wav = wav.squeeze_dim::<1>(0); // [T_out]
     let data = wav.into_data();

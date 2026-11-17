@@ -69,6 +69,9 @@ half = "2"
 log = "0.4"
 bytemuck = "1"
 memmap2 = "0.9"
+# Deterministic sampling: hosts a SplitMix64 seeded by GenerateOptions::seed
+rand = { version = "0.8", default-features = false }
+rand_chacha = "0.3"
 
 [dev-dependencies]
 approx = "0.5"

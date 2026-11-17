@@ -43,10 +43,15 @@ impl<B: Backend> CausalDecoderBlock<B> {
     }
 
     pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 3> {
+        self.forward_seeded(x, None)
+    }
+
+    /// Deterministic variant: `seed` fixes the noise block, when present.
+    pub fn forward_seeded(&self, x: Tensor<B, 3>, seed: Option<u64>) -> Tensor<B, 3> {
         let x = self.snake.forward(x);
         let x = self.up.forward(x);
         let x = match &self.noise {
-            Some(n) => n.forward(x),
+            Some(n) => n.forward_seeded(x, seed),
             None => x,
         };
         let x = self.res1.forward(x);
@@ -147,6 +152,16 @@ impl<B: Backend> CausalDecoder<B> {
     }
 
     pub fn forward(&self, x: Tensor<B, 3>, target_sr_hz: i32) -> Tensor<B, 3> {
+        self.forward_seeded(x, target_sr_hz, None)
+    }
+
+    /// Deterministic variant: `seed` is forwarded to every noise block.
+    pub fn forward_seeded(
+        &self,
+        x: Tensor<B, 3>,
+        target_sr_hz: i32,
+        seed: Option<u64>,
+    ) -> Tensor<B, 3> {
         let device = x.device();
         let sr_idx = self
             .sr_bin_boundaries
@@ -159,7 +174,7 @@ impl<B: Backend> CausalDecoder<B> {
             if let (Some(sl), Some(idx)) = (sr_layer, &sr_idx) {
                 h = sl.forward(h, idx.clone());
             }
-            h = blk.forward(h);
+            h = blk.forward_seeded(h, seed);
         }
         let h = self.snake_out.forward(h);
         let h = self.last.forward(h);

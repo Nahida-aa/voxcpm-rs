@@ -4,6 +4,7 @@ use crate::locdit::local_dit::VoxCpmLocDiTV2;
 use burn::module::Ignored;
 use burn::prelude::*;
 use burn::tensor::TensorData;
+use rand::{Rng, SeedableRng};
 
 #[derive(Module, Debug)]
 pub struct UnifiedCfm<B: Backend> {
@@ -41,6 +42,7 @@ impl<B: Backend> UnifiedCfm<B> {
         cfg_value: f64,
         sway_sampling_coef: f64,
         use_cfg_zero_star: bool,
+        seed: Option<u64>,
     ) -> Tensor<B, 3> {
         let [b, _] = mu.dims();
         let device = mu.device();
@@ -48,12 +50,31 @@ impl<B: Backend> UnifiedCfm<B> {
         let z = if std::env::var("VOXCPM_Z_ZERO").is_ok() {
             Tensor::<B, 3>::zeros([b, self.in_channels, patch_size], &device)
         } else {
-            Tensor::<B, 3>::random(
-                [b, self.in_channels, patch_size],
-                burn::tensor::Distribution::Normal(0.0, 1.0),
-                &device,
-            )
-            .mul_scalar(temperature)
+            match seed {
+                Some(seed) => {
+                    // Deterministic initial noise: same seed ⇒ same waveform.
+                    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+                    let values: Vec<f32> = (0..b * self.in_channels * patch_size)
+                        .map(|_| {
+                            let u: f32 = rng.r#gen::<f32>();
+                            let u2: f32 = rng.r#gen::<f32>();
+                            (-2.0 * u.max(f32::MIN_POSITIVE).ln()).sqrt()
+                                * (std::f32::consts::TAU * u2).cos()
+                        })
+                        .collect();
+                    Tensor::<B, 3>::from_data(
+                        TensorData::new(values, [b, self.in_channels, patch_size]),
+                        &device,
+                    )
+                    .mul_scalar(temperature as f32)
+                }
+                None => Tensor::<B, 3>::random(
+                    [b, self.in_channels, patch_size],
+                    burn::tensor::Distribution::Normal(0.0, 1.0),
+                    &device,
+                )
+                .mul_scalar(temperature),
+            }
         };
 
         let n = n_timesteps + 1;
