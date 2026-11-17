@@ -15,6 +15,10 @@ name = "voxcpm_burn"
 path = "src/lib.rs"
 
 [[bin]]
+name = "voxlab-dump"
+path = "src/bin/voxlab-dump.rs"
+
+[[bin]]
 name = "voxcpm-burn-wgpu"
 path = "src/bin/voxcpm-burn-wgpu.rs"
 required-features = ["wgpu"]
@@ -33,6 +37,7 @@ required-features = ["vulkan"]
 default = ["wgpu"]
 wgpu = ["voxcpm-rs/wgpu"]
 cpu = ["voxcpm-rs/cpu", "burn/ndarray"]
+cpu-blas-dump = ["voxcpm-rs/cpu-blas", "burn/ndarray", "burn/openblas"]
 cpu-blas = ["voxcpm-rs/cpu-blas", "burn/ndarray", "burn/openblas"]
 vulkan = ["voxcpm-rs/vulkan", "dep:burn-cubecl"]
 

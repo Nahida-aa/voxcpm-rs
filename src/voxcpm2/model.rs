@@ -282,6 +282,24 @@ impl<B: Backend> VoxCpm2Model<B> {
         }
     }
 
+    /// Encode a batch of audio-feature patches `[B, T, P, D]` to LM hidden
+    /// `[B, T, lm_h]`. Exposed for cross-backend numerical comparison
+    /// (e.g. f16 Vulkan vs bf16 PyTorch) without running the sampler.
+    pub fn encode_feat(&self, feat: Tensor<B, 4>) -> Tensor<B, 3> {
+        let feat_embed = self.feat_encoder.forward(feat);
+        self.enc_to_lm_proj.forward(feat_embed)
+    }
+
+    /// Encode raw audio `[B, 1, T]` to AudioVAE latent `[B, D, T']`.
+    pub fn encode_audio(&self, audio: Tensor<B, 3>) -> Tensor<B, 3> {
+        self.audio_vae.encode(audio)
+    }
+
+    /// Decode latent patches `[B, D, T]` with the AudioVAE.
+    pub fn decode_feat(&self, latent: Tensor<B, 3>, seed: Option<u64>) -> Tensor<B, 3> {
+        self.audio_vae.decode_seeded(latent, seed)
+    }
+
     /// Run one diffusion sample + stop-head check from the current state.
     ///
     /// Updates `state.prefix_feat_cond` to the newly predicted patch (so the

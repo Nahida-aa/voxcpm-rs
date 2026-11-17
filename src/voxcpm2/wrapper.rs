@@ -375,6 +375,55 @@ impl<B: Backend> VoxCPM<B> {
         self.model.audio_vae.decode(feat)
     }
 
+    /// Audio patch geometry: `(patch_size, feat_dim)`.
+    pub fn feat_geometry(&self) -> (usize, usize) {
+        (self.model.patch_size(), self.model.config.0.feat_dim)
+    }
+
+    /// Raw mono audio `[B, 1, T]` (f32) → AudioVAE latent `[B, D, T']` (f32 data).
+    pub fn encode_audio_f32(
+        &self,
+        audio: Tensor<B, 3>,
+    ) -> crate::Result<(Vec<f32>, Vec<usize>)> {
+        let out = self.model.encode_audio(audio);
+        let dims = out.dims().to_vec();
+        let values = out
+            .into_data()
+            .convert::<f32>()
+            .into_vec::<f32>()
+            .map_err(|e| crate::Error::AudioDecode(format!("latent readback failed: {e}")))?;
+        Ok((values, dims))
+    }
+
+    /// Audio features `[B, T, P, D]` → LM hidden `[B, T, lm_h]`, as f32 data.
+    ///
+    /// Meant for numerical comparison against another implementation: it runs
+    /// only the two encoding layers (no sampling), so the result is
+    /// deterministic regardless of `GenerateOptions`.
+    pub fn encode_feat_f32(
+        &self,
+        feat: Tensor<B, 4>,
+    ) -> crate::Result<(Vec<f32>, Vec<usize>)> {
+        let out = self.model.encode_feat(feat);
+        let dims = out.dims().to_vec();
+        let data = out.into_data();
+        let values = data
+            .convert::<f32>()
+            .into_vec::<f32>()
+            .map_err(|e| crate::Error::AudioDecode(format!("encode readback failed: {e}")))?;
+        Ok((values, dims))
+    }
+
+    /// Decode latent patches `[B, D, T]` to mono samples (f32), with optional
+    /// seeded VAE noise.
+    pub fn decode_feat_f32(
+        &self,
+        latent: Tensor<B, 3>,
+        seed: Option<u64>,
+    ) -> crate::Result<Vec<f32>> {
+        decode_latent_to_samples_seeded(&self.model.audio_vae, latent, seed)
+    }
+
     /// Padding mode for prompt audio prior to VAE encoding.
     /// - `Right`: pad zeros at the end (used for reference audio in voice cloning).
     /// - `Left`: pad zeros at the start so the *valid* audio sits at the end of
