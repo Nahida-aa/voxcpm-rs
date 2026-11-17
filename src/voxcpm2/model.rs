@@ -584,6 +584,15 @@ impl<B: Backend> VoxCpm2Model<B> {
                     )?;
                     Ok(())
                 };
+                // DiT input (pre-CFM): what the sampler starts from.
+                let dit_in = Tensor::cat(
+                    vec![
+                        self.lm_to_dit_proj.forward(state.lm_hidden.clone()),
+                        self.res_to_dit_proj.forward(state.residual_hidden.clone()),
+                    ],
+                    1,
+                );
+                dump(format!("step_{i}_dit_input"), dit_in)?;
                 dump(format!("step_{i}_pred_feat"), pred)?;
                 dump(format!("step_{i}_lm_hidden"), state.lm_hidden.clone())?;
                 dump(format!("step_{i}_residual_hidden"), state.residual_hidden.clone())?;
