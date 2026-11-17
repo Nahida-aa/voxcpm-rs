@@ -1,7 +1,7 @@
 [workspace]
 # 独立 workspace：bf16/SPIR-V 需要 vendor/patched 的 [patch.crates-io]，
-# 而 patch 只在 workspace 根生效。vox-lab 侧入口在 vox-lab-burn/。
-members = ["vox-lab-burn"]
+# 而 patch 只在 workspace 根生效。vox-lab 侧入口在 cli/。
+members = ["cli"]
 
 [package]
 name = "voxcpm-rs"
