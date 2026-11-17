@@ -335,11 +335,23 @@ impl<B: Backend> VoxCpm2Model<B> {
             .stop_head
             .forward(crate::minicpm4::silu_stable(self.stop_proj.forward(state.lm_hidden.clone())));
         let stops: Vec<bool> = stop_logits
+            .clone()
             .argmax(1)
             .into_data()
             .iter::<i64>()
             .map(|v| v == 1)
             .collect();
+
+        if std::env::var("VOXCPM_DEBUG_STOP").is_ok() {
+            // Diagnosing "runs to max_len": log the raw 2-class logits so a
+            // saturation (huge values) or a stuck argmax is visible.
+            let logits: Vec<f32> = stop_logits
+                .clone()
+                .into_data()
+                .iter::<f32>()
+                .collect();
+            eprintln!("[stop] logits={logits:?} argmax={stops:?}");
+        }
 
         DitStep { pred_feat: pred4, stops }
     }
